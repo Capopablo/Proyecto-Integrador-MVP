@@ -1,65 +1,76 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from database import engine, Base, get_db
 from routers.therapists import router as therapists_router
-from models import Therapist, Patient, Session  # Importamos los modelos necesarios
-from auth import get_password_hash
+from models import Therapist, Patient, TherapySession
 from schemas import TherapistCreate
-from datetime import datetime  # Para manejar fechas
-from auth import create_admin_user
+from datetime import datetime
 
-
+# Configuración inicial
+app = FastAPI(title="API de Psicólogos Online (Modo Sin Login)",
+              description="MVP operativo sin sistema de autenticación",
+              version="1.0.0")
 
 # Crea las tablas en la base de datos (solo para desarrollo)
 Base.metadata.create_all(bind=engine)
 
-
-# Crea el usuario admin al iniciar (solo en desarrollo)
-if __name__ == "__main__":
-    from database import SessionLocal
-    db = SessionLocal()
-    
-    try:
-        from auth import create_admin_user
-        create_admin_user(db)
-    except Exception as e:
-        print("❌ Error:", str(e))
-    finally:
-        db.close()
-
-app = FastAPI()
-
-# Configuración CORS (se mantiene igual)
+# Configuración CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Ampliado para desarrollo
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Router organizado (se mantiene igual)
-app.include_router(therapists_router)
+# Incluye routers principales
+app.include_router(
+    therapists_router,
+    prefix="/api",  # Mejor organización de endpoints
+    tags=["Terapeutas"]
+)
 
-# --- Endpoint nuevo para sesiones ---
-@app.post("/patients/{patient_id}/sessions")
+# --- Endpoints principales ---
+@app.get("/", tags=["Estado"])
+def home():
+    return {
+        "message": "API de Psicólogos Online - Modo Demo",
+        "user": {  # Usuario demo pre-autenticado
+            "email": "admin@mindful.com",
+            "full_name": "Administrador Demo",
+            "role": "admin",
+            "license_number": "DEMO-001"
+        },
+        "documentación": "/docs"
+    }
+
+@app.get("/api/healthcheck", tags=["Estado"])
+def healthcheck():
+    """Endpoint para verificar estado del servidor"""
+    return {"status": "active", "timestamp": datetime.now().isoformat()}
+
+# --- Endpoints de sesiones ---
+@app.post("/api/patients/{patient_id}/sessions",
+          tags=["Sesiones"],
+          response_model=dict)
 def create_session(
     patient_id: int,
-    session_notes: str,  # Campo obligatorio
-    session_date: datetime = None,  # Opcional (si no se envía, usará datetime.now())
+    session_notes: str,
+    session_date: datetime = None,
     db: Session = Depends(get_db)
 ):
-    # Verifica si el paciente existe
+    """
+    Registra una nueva sesión terapéutica.
+    """
     patient = db.query(Patient).filter(Patient.id == patient_id).first()
     if not patient:
-        return {"error": "Paciente no encontrado"}, 404
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
 
-    # Crea la sesión (usa la fecha actual si no se proporciona)
-    new_session = Session(
+    new_session = TherapySession(
         patient_id=patient_id,
         session_notes=session_notes,
-        session_date=session_date if session_date else datetime.now(),
-        # clinical_record_id puede añadirse después si es necesario
+        session_date=session_date or datetime.now(),
     )
 
     db.add(new_session)
@@ -70,24 +81,41 @@ def create_session(
         "session_id": new_session.id
     }
 
-# --- Los endpoints existentes se mantienen intactos ---
-@app.post("/therapists-old/")
-def create_therapist_old(therapist: TherapistCreate, db: Session = Depends(get_db)):
-    hashed_password = get_password_hash(therapist.password)
+# --- Endpoints legacy (actualizados) ---
+@app.post("/api/therapists",
+          tags=["Terapeutas"],
+          response_model=dict)
+def create_therapist(therapist: TherapistCreate, db: Session = Depends(get_db)):
+    """
+    Registra un nuevo terapeuta (sin autenticación).
+    """
+    # Verifica si el email ya está registrado
+    existing_therapist = db.query(Therapist).filter(Therapist.email == therapist.email).first()
+    if existing_therapist:
+        raise HTTPException(
+            status_code=400,
+            detail="El email ya está registrado"
+        )
+    
     db_therapist = Therapist(
         full_name=therapist.full_name,
         email=therapist.email,
         license_number=therapist.license_number,
-        password_hash=hashed_password
+        password_hash="disabled"  # Campo requerido pero no usado
     )
+    
     db.add(db_therapist)
     db.commit()
-    return {"message": "Terapeuta registrado exitosamente"}
+    return {
+        "message": "Terapeuta registrado exitosamente",
+        "therapist_id": db_therapist.id
+    }
 
-@app.get("/therapists-old/")
-def list_therapists_old(db: Session = Depends(get_db)):
+@app.get("/api/therapists",
+         tags=["Terapeutas"],
+         response_model=list[TherapistCreate])
+def list_therapists(db: Session = Depends(get_db)):
+    """
+    Obtiene la lista completa de terapeutas registrados.
+    """
     return db.query(Therapist).all()
-
-@app.get("/")
-def home():
-    return {"message": "API de Psicólogos Online"}

@@ -3,17 +3,23 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import Therapist
 from schemas import TherapistCreate, TherapistOut
-from auth import get_password_hash  # Importamos la función de hashing
-from datetime import datetime  # Para la fecha de creación
+from datetime import datetime
 
 router = APIRouter(
-    prefix="/therapists",  # Corregido: "therapists" en lugar de "therapists"
+    prefix="/therapists",
     tags=["therapists"]
 )
 
-# --- Endpoint 1: Registrar un psicólogo (CON HASH REAL) ---
+# --- Endpoint 1: Registrar un terapeuta (SIN AUTENTICACIÓN) ---
 @router.post("/", response_model=TherapistOut, status_code=status.HTTP_201_CREATED)
 def create_therapist(therapist: TherapistCreate, db: Session = Depends(get_db)):
+    """
+    Registra un nuevo terapeuta (modo sin autenticación).
+    Campos requeridos:
+    - full_name: Nombre completo
+    - email: Correo electrónico válido
+    - license_number: Número de licencia profesional
+    """
     # Verificar si el email ya está registrado
     existing_email = db.query(Therapist).filter(Therapist.email == therapist.email).first()
     if existing_email:
@@ -30,14 +36,13 @@ def create_therapist(therapist: TherapistCreate, db: Session = Depends(get_db)):
             detail="El número de licencia ya está registrado"
         )
     
-    # Crear el psicólogo CON CONTRASEÑA HASHEADA
+    # Crear el terapeuta (sin campo de password)
     db_therapist = Therapist(
         full_name=therapist.full_name,
         email=therapist.email,
         license_number=therapist.license_number,
-        password_hash=get_password_hash(therapist.password),  # 👈 Hashing real
-        created_at=datetime.utcnow(),  # 👈 Fecha de creación
-        is_active=True  # 👈 Estado activo por defecto
+        created_at=datetime.utcnow(),
+        is_active=True
     )
     
     db.add(db_therapist)
@@ -46,18 +51,24 @@ def create_therapist(therapist: TherapistCreate, db: Session = Depends(get_db)):
     
     return db_therapist
 
-# --- Endpoint 2: Obtener un psicólogo por ID ---
+# --- Endpoint 2: Obtener un terapeuta por ID ---
 @router.get("/{therapist_id}", response_model=TherapistOut)
 def get_therapist(therapist_id: int, db: Session = Depends(get_db)):
+    """
+    Obtiene los datos de un terapeuta por su ID.
+    """
     therapist = db.query(Therapist).filter(Therapist.id == therapist_id).first()
     if not therapist:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Psicólogo no encontrado"
+            detail="Terapeuta no encontrado"
         )
     return therapist
 
-# --- Endpoint 3: Listar todos los psicólogos (NUEVO) ---
+# --- Endpoint 3: Listar todos los terapeutas ---
 @router.get("/", response_model=list[TherapistOut])
 def list_therapists(db: Session = Depends(get_db)):
+    """
+    Devuelve la lista completa de terapeutas registrados.
+    """
     return db.query(Therapist).all()

@@ -9,11 +9,12 @@ class Therapist(Base):
     full_name = Column(String(100), nullable=False)
     email = Column(String(100), unique=True, nullable=False)
     license_number = Column(String(50), unique=True)
-    password_hash = Column(Text, nullable=False)
+    # CAMPO ELIMINADO: password_hash = Column(Text, nullable=False)
     created_at = Column(TIMESTAMP)
     is_active = Column(Boolean, default=True)
 
     patients = relationship("Patient", back_populates="therapist", cascade="all, delete-orphan")
+
 
 class Patient(Base):
     __tablename__ = "patients"
@@ -47,7 +48,7 @@ class ClinicalRecord(Base):
     patient = relationship("Patient", back_populates="clinical_records")
     sessions = relationship("Session", back_populates="clinical_record")
 
-class Session(Base):
+class TherapySession(Base):
     __tablename__ = "sessions"
 
     id = Column(Integer, primary_key=True)

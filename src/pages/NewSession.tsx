@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -23,12 +22,21 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
+// 1. Definimos los tipos
 interface SessionFormValues {
   patientId: string;
   summary: string;
   audioFile?: File;
   therapistRating?: number;
   patientRating?: number;
+}
+
+interface NewSessionProps {
+  user: {
+    email: string;
+    full_name: string;
+    role: string;
+  };
 }
 
 // Mock de pacientes para el selector
@@ -39,7 +47,7 @@ const mockPatients = [
   { id: "4", name: "Ana Rodríguez" },
 ];
 
-const NewSession = () => {
+const NewSession = ({ user }: NewSessionProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [audioFile, setAudioFile] = useState<File | null>(null);
 
@@ -67,6 +75,9 @@ const NewSession = () => {
       data.audioFile = audioFile;
     }
 
+    // Registrar qué terapeuta creó la sesión
+    console.log("Sesión creada por:", user.email);
+
     // Simulando envío de datos
     setTimeout(() => {
       console.log("Session data:", data);
@@ -80,11 +91,12 @@ const NewSession = () => {
   return (
     <PageContainer 
       title="Nueva Sesión" 
-      subtitle="Registra detalles de la sesión terapéutica"
+      subtitle={`Terapeuta: ${user.full_name} (${user.role})`}  // 2. Mostramos info del usuario
     >
       <div className="bg-white/50 backdrop-blur-sm border border-slate-200 rounded-lg p-6 shadow-sm">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            {/* Todo el formulario se mantiene igual */}
             <FormField
               control={form.control}
               name="patientId"
@@ -114,6 +126,7 @@ const NewSession = () => {
               )}
             />
 
+            {/* Resto del formulario permanece igual */}
             <FormField
               control={form.control}
               name="summary"

@@ -1,4 +1,3 @@
-
 import PageContainer from "@/components/PageContainer";
 import {
   BarChart,
@@ -17,6 +16,16 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+
+// Definimos el tipo para las props
+type Props = {
+  user: {
+    email: string;
+    full_name: string;
+    role: string;
+    isAuthenticated: boolean;
+  };
+};
 
 // Mock de datos para presentismo
 const attendanceData = [
@@ -42,8 +51,8 @@ const chartConfig = {
   sesiones: {
     label: "Sesiones",
     theme: {
-      light: "#4f46e5", // Color para el tema claro
-      dark: "#818cf8", // Color para el tema oscuro (si se implementa)
+      light: "#4f46e5",
+      dark: "#818cf8",
     },
   },
   paciente: {
@@ -62,14 +71,14 @@ const chartConfig = {
   },
 };
 
-const Statistics = () => {
+const Statistics = ({ user }: Props) => {
   const hasAttendanceData = attendanceData.length > 0;
   const hasEmotionalData = emotionalData.length > 0;
 
   return (
     <PageContainer 
       title="Estadísticas"
-      subtitle="Visualiza datos y tendencias de tus pacientes"
+      subtitle={`Bienvenido ${user.full_name}`} // Aquí usamos el user
     >
       <div className="space-y-10">
         {/* Gráfico de Presentismo */}

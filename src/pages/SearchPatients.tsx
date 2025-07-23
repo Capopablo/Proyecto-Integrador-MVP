@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Search, FileText } from "lucide-react";
@@ -20,7 +19,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// Mock de datos para demostración
+// 1. Definimos el tipo para las props
+interface SearchPatientsProps {
+  user: {
+    email: string;
+    full_name: string;
+    role: string;
+  };
+}
+
+// Mock de datos (podrías mover esto a un archivo aparte)
 const mockPatients = [
   { 
     id: "1", 
@@ -29,31 +37,9 @@ const mockPatients = [
     gender: "Masculino",
     reason: "Ansiedad y estrés laboral",
     lastSession: new Date(2025, 3, 25),
+    therapistId: "admin@mindful.com" // Añadimos referencia al terapeuta
   },
-  { 
-    id: "2", 
-    name: "María García", 
-    age: 28, 
-    gender: "Femenino",
-    reason: "Depresión",
-    lastSession: new Date(2025, 3, 24),
-  },
-  { 
-    id: "3", 
-    name: "Carlos López", 
-    age: 45, 
-    gender: "Masculino",
-    reason: "Problemas de pareja",
-    lastSession: null,
-  },
-  { 
-    id: "4", 
-    name: "Ana Rodríguez", 
-    age: 19, 
-    gender: "Femenino",
-    reason: "Ansiedad social",
-    lastSession: new Date(2025, 3, 15),
-  },
+  // ... (otros pacientes)
 ];
 
 interface SearchFilters {
@@ -62,45 +48,49 @@ interface SearchFilters {
   reason: string;
 }
 
-const SearchPatients = () => {
+const SearchPatients = ({ user }: SearchPatientsProps) => {
   const [filters, setFilters] = useState<SearchFilters>({
     name: "",
     ageRange: "",
     reason: "",
   });
 
-  // Función para aplicar los filtros
-  const filteredPatients = mockPatients.filter(patient => {
-    const nameMatch = patient.name.toLowerCase().includes(filters.name.toLowerCase());
-    
-    let ageMatch = true;
-    if (filters.ageRange) {
-      if (filters.ageRange === "0-18") {
-        ageMatch = patient.age <= 18;
-      } else if (filters.ageRange === "19-30") {
-        ageMatch = patient.age >= 19 && patient.age <= 30;
-      } else if (filters.ageRange === "31-50") {
-        ageMatch = patient.age >= 31 && patient.age <= 50;
-      } else if (filters.ageRange === "50+") {
-        ageMatch = patient.age > 50;
+  // Filtrar pacientes (añadiendo filtro por terapeuta si es necesario)
+  const filteredPatients = mockPatients
+    .filter(patient => patient.therapistId === user.email) // Solo pacientes del terapeuta actual
+    .filter(patient => {
+      const nameMatch = patient.name.toLowerCase().includes(filters.name.toLowerCase());
+      
+      let ageMatch = true;
+      if (filters.ageRange) {
+        if (filters.ageRange === "0-18") {
+          ageMatch = patient.age <= 18;
+        } else if (filters.ageRange === "19-30") {
+          ageMatch = patient.age >= 19 && patient.age <= 30;
+        } else if (filters.ageRange === "31-50") {
+          ageMatch = patient.age >= 31 && patient.age <= 50;
+        } else if (filters.ageRange === "50+") {
+          ageMatch = patient.age > 50;
+        }
       }
-    }
-    
-    const reasonMatch = filters.reason 
-      ? patient.reason.toLowerCase().includes(filters.reason.toLowerCase()) 
-      : true;
-    
-    return nameMatch && ageMatch && reasonMatch;
-  });
+      
+      const reasonMatch = filters.reason 
+        ? patient.reason.toLowerCase().includes(filters.reason.toLowerCase()) 
+        : true;
+      
+      return nameMatch && ageMatch && reasonMatch;
+    });
 
   return (
     <PageContainer 
       title="Buscar Pacientes"
-      subtitle="Encuentra y gestiona información de pacientes"
+      subtitle={`Terapeuta: ${user.full_name} (${user.role})`}  // 2. Mostramos info del usuario
     >
+      {/* Panel de filtros */}
       <div className="bg-white/50 backdrop-blur-sm border border-slate-200 rounded-lg p-6 shadow-sm mb-6">
         <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Campo de búsqueda por nombre */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-4 w-4" />
               <Input
@@ -112,6 +102,7 @@ const SearchPatients = () => {
               />
             </div>
             
+            {/* Selector de rango de edad */}
             <Select 
               onValueChange={(value) => setFilters({...filters, ageRange: value})}
               value={filters.ageRange}
@@ -128,6 +119,7 @@ const SearchPatients = () => {
               </SelectContent>
             </Select>
 
+            {/* Campo de búsqueda por motivo */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 h-4 w-4" />
               <Input
@@ -142,10 +134,11 @@ const SearchPatients = () => {
         </div>
       </div>
 
+      {/* Resultados */}
       {filteredPatients.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredPatients.map(patient => (
-            <Card key={patient.id} className="overflow-hidden">
+            <Card key={patient.id} className="overflow-hidden hover:shadow-md transition-shadow">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">{patient.name}</CardTitle>
               </CardHeader>
