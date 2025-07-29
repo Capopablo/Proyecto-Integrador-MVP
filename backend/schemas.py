@@ -45,12 +45,13 @@ class SessionBase(BaseModel):
     session_date: Optional[datetime] = None # Permitir que sea opcional para que el backend ponga datetime.now()
 
 class SessionCreate(SessionBase):
+    patient_id: int # <--- ¡ESTA ES LA MODIFICACIÓN CLAVE! Añadimos patient_id aquí.
     # clinical_record_id: Optional[int] = None # No lo necesitamos aquí si el backend lo asigna
     pass
 
 class SessionOut(SessionBase):
     id: int
-    patient_id: int
+    patient_id: int # Necesitamos que patient_id esté en la salida también
     therapist_id: int
     clinical_record_id: Optional[int] = None # Ahora sí puede ser nulo, pero lo incluimos
     created_at: datetime # Asumiendo que también tienes un campo created_at en tu modelo SQLAlchemy
@@ -78,7 +79,6 @@ class PatientOut(PatientBase):
     is_active: bool
     
     # Listas para las relaciones: Pydantic las usará para serializar los objetos relacionados
-    # ¡ESTA ES LA MODIFICACIÓN CLAVE! Cambiado 'sessions' a 'therapy_sessions'
     therapy_sessions: List[SessionOut] = [] 
     clinical_records: List[ClinicalRecordOut] = []
 

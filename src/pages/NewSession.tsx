@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { FileAudio, Mic, StopCircle, RefreshCcw, Loader2 } from "lucide-react";
-import PageContainer from "@/components/PageContainer"; // <--- CORRECTO: SIN LLAVES
+import PageContainer from "@/components/PageContainer";
 import EmotionalRating from "@/components/EmotionalRating";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,31 +14,28 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import {
-  Select,
+  Select, 
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea"; // CORRECTO: CON ALIAS @/
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 
-// --- Importar useReactMediaRecorder ---
 import { useReactMediaRecorder } from "react-media-recorder";
 
 interface Patient {
   id: number;
   full_name: string;
-  // Otros campos del paciente si son necesarios, ej: birth_date, gender
 }
 
 interface SessionFormValues {
-  patient_id: number;
+  patient_name: string; 
   session_notes: string;
   emotional_score: number;
   session_type: "regular" | "evaluación" | "emergencia" | "seguimiento";
   duration_minutes: number;
-  // Si añadieras un DatePicker para la sesión, sería:
-  // session_date?: string; // Formato YYYY-MM-DD o ISO string
 }
 
 interface NewSessionProps {
@@ -46,33 +43,31 @@ interface NewSessionProps {
     email: string;
     full_name: string;
     role: string;
-    id: number; // Añadido para el therapist_id
+    id: number;
   };
 }
 
 const NewSession = ({ user }: NewSessionProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [patients, setPatients] = useState<Patient[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]); 
   const [isLoadingPatients, setIsLoadingPatients] = useState(true);
 
-  // --- NUEVOS ESTADOS PARA GRABACIÓN Y TRANSCRIPCIÓN ---
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcriptionError, setTranscriptionError] = useState<string | null>(null);
 
-  // --- CONFIGURACIÓN DE useReactMediaRecorder ---
   const {
-    status, // 'idle', 'recording', 'stopped', 'acquiring_media'
+    status,
     startRecording,
     stopRecording,
-    clearBlobUrl, // Para limpiar el audio grabado
-    mediaBlobUrl, // URL del Blob de audio cuando la grabación se detiene
+    clearBlobUrl,
+    mediaBlobUrl,
   } = useReactMediaRecorder({
     audio: true
   });
 
   const form = useForm<SessionFormValues>({
     defaultValues: {
-      patient_id: undefined,
+      patient_name: "",
       session_notes: "",
       emotional_score: 3,
       session_type: "regular",
@@ -80,12 +75,10 @@ const NewSession = ({ user }: NewSessionProps) => {
     },
   });
 
-  // --- EFECTO PARA CARGAR PACIENTES ---
   useEffect(() => {
     const fetchPatients = async () => {
       try {
         setIsLoadingPatients(true);
-        // CAMBIO CLAVE AQUÍ: Puerto 5000 a 8000
         const response = await fetch(`http://localhost:8000/api/patients?therapist_id=${user.id}`, {
           method: "GET",
           headers: {
@@ -100,9 +93,6 @@ const NewSession = ({ user }: NewSessionProps) => {
 
         const data: Patient[] = await response.json();
         setPatients(data);
-        if (data.length > 0) {
-            form.setValue("patient_id", data[0].id); // Selecciona el primer paciente por defecto
-        }
       } catch (error) {
         toast.error(`Error al cargar pacientes: ${error instanceof Error ? error.message : "Desconocido"}`);
         console.error("Error fetching patients:", error);
@@ -112,36 +102,43 @@ const NewSession = ({ user }: NewSessionProps) => {
     };
 
     fetchPatients();
-  }, [user.id, form]);
+  }, [user.id]); 
 
-  // --- FUNCIÓN PARA ENVIAR EL FORMULARIO (EXISTENTE) ---
   const onSubmit = async (data: SessionFormValues) => {
     setIsSubmitting(true);
     
-    // Asegurar que patient_id sea un número, ya que el select lo devuelve como string
-    const patientIdAsNumber = typeof data.patient_id === 'string' ? parseInt(data.patient_id, 10) : data.patient_id;
+    const selectedPatient = patients.find(
+        (p) => p.full_name.toLowerCase() === data.patient_name.toLowerCase().trim()
+    );
 
-    if (!patientIdAsNumber) {
-        toast.error("Por favor, selecciona un paciente.");
+    if (!selectedPatient) {
+        toast.error("Paciente no encontrado. Por favor, selecciona un paciente de la lista de sugerencias o escribe el nombre completo correctamente.");
         setIsSubmitting(false);
         return;
     }
 
-    try {
-      console.log("Datos del formulario (data) recibidos por onSubmit:", data);
-      console.log("ID del paciente para el endpoint:", patientIdAsNumber);
+    // --- AÑADE ESTOS CONSOLE.LOGS PARA DEPURAR ---
+    console.log("--- Depuración de patient_id ---");
+    console.log("selectedPatient:", selectedPatient);
+    console.log("selectedPatient.id (valor original):", selectedPatient.id);
+    console.log("typeof selectedPatient.id (tipo original):", typeof selectedPatient.id);
+    console.log("Number(selectedPatient.id) (valor convertido):", Number(selectedPatient.id));
+    console.log("typeof Number(selectedPatient.id) (tipo convertido):", typeof Number(selectedPatient.id));
+    // --- FIN CONSOLE.LOGS DE DEPURACIÓN ---
 
+    try {
       const bodyToSend = {
-        patient_id: patientIdAsNumber,
+        patient_id: Number(selectedPatient.id), 
         session_notes: data.session_notes,
         emotional_score: data.emotional_score,
         session_type: data.session_type,
         duration_minutes: data.duration_minutes,
-        // session_date: data.session_date, // Si se implementa un DatePicker
       };
-      console.log("Cuerpo JSON a enviar (bodyToSend):", bodyToSend);
+      
+      console.log("Cuerpo JSON a enviar (bodyToSend):", bodyToSend); // Reconfirma el objeto completo
+      console.log("Tipo de patient_id en el objeto final:", typeof bodyToSend.patient_id); // Reconfirma el tipo final
 
-      const response = await fetch(`http://localhost:8000/api/patients/${patientIdAsNumber}/sessions`, {
+      const response = await fetch(`http://localhost:8000/api/sessions`, { 
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -151,20 +148,19 @@ const NewSession = ({ user }: NewSessionProps) => {
 
       if (!response.ok) {
         const errorData = await response.json();
-        console.error("Respuesta de error completa del backend:", errorData); // Para debug
+        console.error("Respuesta de error completa del backend:", errorData);
 
         let errorMessage = "Error desconocido al guardar la sesión.";
 
         if (errorData && typeof errorData.detail === 'string') {
             errorMessage = errorData.detail;
         } else if (errorData && Array.isArray(errorData.detail)) {
-            // Errores de validación de Pydantic
             const validationErrors = errorData.detail.map((err: any) => {
-                return `${err.loc.join('.')}: ${err.msg}`;
+                const loc = err.loc.join('.');
+                return `${loc || 'campo'}: ${err.msg}`;
             });
             errorMessage = `Errores de validación: ${validationErrors.join("; ")}`;
         } else if (errorData && typeof errorData.detail === 'object' && errorData.detail.detail) {
-            // Si el 'detail' es un objeto con un campo 'detail' dentro (como en tus HTTPException con diccionarios)
             errorMessage = errorData.detail.detail;
         } else if (errorData && errorData.message) {
             errorMessage = errorData.message;
@@ -174,16 +170,16 @@ const NewSession = ({ user }: NewSessionProps) => {
       }
 
       const result = await response.json();
-      toast.success(`Sesión guardada con éxito para ${patients.find(p => p.id === result.patient_id)?.full_name || 'paciente desconocido'}`);
+      toast.success(`Sesión guardada con éxito para ${selectedPatient.full_name}`);
       form.reset({
-        patient_id: patientIdAsNumber, // Mantener el paciente seleccionado después de guardar
+        patient_name: "",
         session_notes: "",
         emotional_score: 3,
         session_type: "regular",
         duration_minutes: 50,
       });
-      clearBlobUrl(); // Limpiar el audio grabado después de guardar la sesión
-      setTranscriptionError(null); // Limpiar cualquier error de transcripción
+      clearBlobUrl();
+      setTranscriptionError(null);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Error desconocido al guardar la sesión");
       console.error("Error saving session:", error);
@@ -192,7 +188,6 @@ const NewSession = ({ user }: NewSessionProps) => {
     }
   };
 
-  // --- NUEVA FUNCIÓN PARA TRANSCRIPCION DE AUDIO ---
   const handleTranscribeAudio = useCallback(async () => {
     if (!mediaBlobUrl) {
       toast.error("No hay audio grabado para transcribir.");
@@ -200,22 +195,19 @@ const NewSession = ({ user }: NewSessionProps) => {
     }
 
     setIsTranscribing(true);
-    setTranscriptionError(null); // Limpiar errores anteriores
+    setTranscriptionError(null);
 
     try {
-      // Convertir Blob URL a Blob de archivo
       const audioBlob = await fetch(mediaBlobUrl).then(res => res.blob());
-      // Ajusta el nombre del archivo y el tipo si es necesario
       const audioFile = new File([audioBlob], `session_audio_${Date.now()}.webm`, { type: mediaBlobUrl.includes('webm') ? 'audio/webm' : 'audio/wav' });
 
       const formData = new FormData();
       formData.append("audio_file", audioFile);
-      formData.append("language", "es"); // Hardcoded for Spanish for now
+      formData.append("language", "es");
 
-      // Enviar el audio al nuevo endpoint del backend
       const response = await fetch("http://localhost:8000/api/transcribe-audio", {
         method: "POST",
-        body: formData, // FormData no necesita 'Content-Type' en los headers, el navegador lo añade
+        body: formData,
       });
 
       if (!response.ok) {
@@ -241,7 +233,6 @@ const NewSession = ({ user }: NewSessionProps) => {
     }
   }, [mediaBlobUrl, form]);
 
-  // --- EFECTO PARA DISPARAR LA TRANSCRIPCIÓN CUANDO mediaBlobUrl CAMBIA A UN VALOR ---
   useEffect(() => {
     if (status === 'stopped' && mediaBlobUrl) {
       handleTranscribeAudio();
@@ -258,33 +249,33 @@ const NewSession = ({ user }: NewSessionProps) => {
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Selector de Paciente */}
               <FormField
                 control={form.control}
-                name="patient_id"
+                name="patient_name"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Paciente*</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value ? String(field.value) : ""}>
-                      <FormControl>
-                        <SelectTrigger disabled={isLoadingPatients || patients.length === 0}>
-                          <SelectValue placeholder={isLoadingPatients ? "Cargando pacientes..." : (patients.length === 0 ? "No hay pacientes disponibles" : "Seleccionar paciente")} />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {patients.map((patient) => (
-                          <SelectItem key={patient.id} value={String(patient.id)}>
-                            {patient.full_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <Input
+                        placeholder="Escribe el nombre del paciente y selecciona"
+                        {...field}
+                        list="patients-list" 
+                        disabled={isLoadingPatients} 
+                        required
+                      />
+                    </FormControl>
+                    <datalist id="patients-list">
+                      {patients.map((patient) => (
+                        <option key={patient.id} value={patient.full_name} />
+                      ))}
+                    </datalist>
                     <FormMessage />
+                    {isLoadingPatients && <p className="text-sm text-muted-foreground mt-1">Cargando pacientes...</p>}
+                    {!isLoadingPatients && patients.length === 0 && <p className="text-sm text-red-500 mt-1">No hay pacientes registrados para este terapeuta.</p>}
                   </FormItem>
                 )}
               />
 
-              {/* Tipo de Sesión */}
               <FormField
                 control={form.control}
                 name="session_type"
@@ -303,13 +294,12 @@ const NewSession = ({ user }: NewSessionProps) => {
                         <SelectItem value="emergencia">Emergencia</SelectItem>
                         <SelectItem value="seguimiento">Seguimiento</SelectItem>
                       </SelectContent>
+                      <FormMessage />
                     </Select>
-                    <FormMessage />
                   </FormItem>
                 )}
               />
 
-              {/* Duración de la Sesión */}
               <FormField
                 control={form.control}
                 name="duration_minutes"
@@ -331,7 +321,6 @@ const NewSession = ({ user }: NewSessionProps) => {
                 )}
               />
 
-              {/* Puntuación emocional del paciente (ej. EmotionalRating) */}
               <FormField
                 control={form.control}
                 name="emotional_score"
@@ -349,15 +338,13 @@ const NewSession = ({ user }: NewSessionProps) => {
                 )}
               />
 
-            </div> {/* Fin grid de 2 columnas */}
+            </div>
 
-            {/* --- CONTROLES DE GRABACIÓN DE AUDIO --- */}
             <div className="space-y-4 border-t pt-6 mt-6 border-slate-200">
               <h3 className="text-lg font-semibold text-slate-700 flex items-center gap-2">
                 <FileAudio className="h-5 w-5" /> Transcribir Sesión con Audio
               </h3>
               <div className="flex items-center space-x-4">
-                {/* Botón Iniciar Grabación */}
                 <Button
                   type="button"
                   onClick={startRecording}
@@ -368,7 +355,6 @@ const NewSession = ({ user }: NewSessionProps) => {
                   {status === 'acquiring_media' ? 'Iniciando...' : 'Grabar Audio'}
                 </Button>
 
-                {/* Botón Detener Grabación */}
                 <Button
                   type="button"
                   onClick={stopRecording}
@@ -379,13 +365,12 @@ const NewSession = ({ user }: NewSessionProps) => {
                   Detener Grabación
                 </Button>
 
-                {/* Botón Limpiar Audio */}
                 {mediaBlobUrl && (
                   <Button
                     type="button"
                     onClick={() => {
                       clearBlobUrl();
-                      form.setValue("session_notes", ""); // Limpiar también las notas
+                      form.setValue("session_notes", "");
                       setTranscriptionError(null);
                     }}
                     variant="outline"
@@ -398,7 +383,6 @@ const NewSession = ({ user }: NewSessionProps) => {
                 )}
               </div>
 
-              {/* Mensajes de estado de grabación */}
               {status === 'recording' && (
                 <p className="text-sm text-red-600 flex items-center gap-2">
                   <Mic className="h-4 w-4 animate-pulse" /> Grabando...
@@ -420,9 +404,7 @@ const NewSession = ({ user }: NewSessionProps) => {
                 </p>
               )}
             </div>
-            {/* --- FIN CONTROLES DE GRABACIÓN DE AUDIO --- */}
 
-            {/* Notas de la Sesión (ahora puede ser rellenado por la transcripción) */}
             <FormField
               control={form.control}
               name="session_notes"
@@ -430,14 +412,13 @@ const NewSession = ({ user }: NewSessionProps) => {
                 <FormItem>
                   <FormLabel>Notas de la Sesión*</FormLabel>
                   <FormControl>
-                    {/* Aumentado las filas para mejor visualización */}
                     <Textarea
                       placeholder="Detalles importantes de la sesión..."
                       {...field}
-                      rows={8} 
+                      rows={8}
                       required
                       minLength={10}
-                      disabled={isTranscribing} // Desactivar mientras se transcribe
+                      disabled={isTranscribing}
                     />
                   </FormControl>
                   <FormMessage />
@@ -446,19 +427,19 @@ const NewSession = ({ user }: NewSessionProps) => {
             />
 
             <div className="pt-4">
-              <Button 
-                type="submit" 
-                className="w-full md:w-auto" 
+              <Button
+                type="submit"
+                className="w-full md:w-auto"
                 disabled={isSubmitting || isLoadingPatients || patients.length === 0 || isTranscribing}
               >
                 {isSubmitting ? "Guardando..." : "Guardar Sesión"}
               </Button>
             </div>
-          </form>
-        </Form>
-      </div>
-    </PageContainer>
+          </form> 
+        </Form> 
+      </div> 
+    </PageContainer> 
   );
-};
+}; 
 
 export default NewSession;

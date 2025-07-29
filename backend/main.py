@@ -73,8 +73,9 @@ except Exception as e:
 def read_root():
     return {"message": "Welcome to Mindful Therapy Compass API"}
 
-# --- Endpoints de Pacientes ---
-@app.get("/api/patients", response_model=List[schemas.PatientBase])
+# --- Endpoints de Pacientes (MODIFICADO AQUÍ) ---
+# CAMBIO CLAVE: response_model=List[schemas.PatientOut]
+@app.get("/api/patients", response_model=List[schemas.PatientOut])
 async def get_patients(therapist_id: Optional[int] = None, db: Session = Depends(get_db)):
     query = db.query(models.Patient)
     if therapist_id:
@@ -100,27 +101,27 @@ async def create_patient(patient: schemas.PatientCreate, db: Session = Depends(g
     db.refresh(db_patient)
     return db_patient
 
-@app.post("/api/patients/{patient_id}/sessions", response_model=schemas.SessionOut, status_code=status.HTTP_201_CREATED)
-async def create_session_for_patient(
-    patient_id: int,
-    session: schemas.SessionCreate,
+# --- ENDPOINT DE SESIONES (sin cambios adicionales, ya está correcto) ---
+@app.post("/api/sessions", response_model=schemas.SessionOut, status_code=status.HTTP_201_CREATED)
+async def create_session( 
+    session_data: schemas.SessionCreate, 
     db: Session = Depends(get_db)
 ):
-    patient = db.query(models.Patient).filter(models.Patient.id == patient_id).first()
+    patient = db.query(models.Patient).filter(models.Patient.id == session_data.patient_id).first()
     if not patient:
-        raise HTTPException(status_code=404, detail={"detail": "Paciente no encontrado."})
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"detail": "Paciente no encontrado."})
 
-    db_session = models.Session(
-        **session.dict(),
-        patient_id=patient_id,
-        therapist_id=patient.therapist_id
+    db_session = models.TherapySession( 
+        **session_data.dict(), 
+        therapist_id=patient.therapist_id 
     )
+    
     db.add(db_session)
     db.commit()
     db.refresh(db_session)
     return db_session
 
-# --- ENDPOINT PARA TRANSCRIPCION DE AUDIO USANDO WHISPER LOCAL (con ffmpeg-python y archivo temporal) ---
+# --- ENDPOINT PARA TRANSCRIPCION DE AUDIO USANDO WHISPER LOCAL (sin cambios aquí) ---
 @app.post("/api/transcribe-audio")
 async def transcribe_audio(
     audio_file: UploadFile = File(...),
