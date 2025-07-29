@@ -1,32 +1,39 @@
 // src/components/SessionCard.tsx
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { BarChart, Clock, CalendarDays, ClipboardList } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+// Asegúrate de que Badge esté importado si lo usas en el componente
+import { Badge } from "@/components/ui/badge"; 
 
+// --- INTERFAZ DE PROPS DE SESSIONCARD RESTAURADA ---
 interface SessionCardProps {
-  sessionId: number; 
+  sessionId: number; // Volvemos a esperar el ID numérico
   date: Date;
   summary: string;
   therapistRating: number;
-  sessionType?: string; 
-  durationMinutes?: number; 
+  // Si habías añadido sessionType o durationMinutes como props individuales antes,
+  // asegúrate de incluirlas aquí y en la desestructuración,
+  // y luego en PatientHistory al pasarlas.
+  sessionType?: string; // Si lo necesitas
+  durationMinutes?: number; // Si lo necesitas
 }
+// --- FIN INTERFAZ ---
 
 export default function SessionCard({
   sessionId,
   date,
   summary,
   therapistRating,
-  sessionType,
-  durationMinutes,
+  sessionType, // Desestructurar si lo incluiste en las props
+  durationMinutes, // Desestructurar si lo incluiste en las props
 }: SessionCardProps) {
   // Función auxiliar para determinar el color del rating
   const getRatingColor = (rating: number) => {
-    if (rating >= 4) return "text-green-600";
-    if (rating === 3) return "text-yellow-600";
-    return "text-red-600";
+    if (rating >= 4) return "text-green-600"; // Bueno/Muy bueno
+    if (rating === 3) return "text-yellow-600"; // Neutral
+    return "text-red-600"; // Bajo/Muy bajo
   };
 
   return (
@@ -35,11 +42,11 @@ export default function SessionCard({
         <CardTitle className="flex justify-between items-center text-md font-semibold text-gray-800">
           <span className="flex items-center gap-2">
             <ClipboardList className="h-4 w-4 text-blue-600" />
-            Sesión #{sessionId}
+            Sesión #{sessionId} {/* Mostrar el ID de la sesión */}
           </span>
           <span className="flex items-center gap-1 text-sm text-gray-600">
             <CalendarDays className="h-3 w-3" />
-            {format(date, "dd MMMM yyyy, HH:mm", { locale: es })}
+            {format(date, "dd MMMM yyyy, HH:mm", { locale: es })} {/* Formato de fecha y hora */}
           </span>
         </CardTitle>
       </CardHeader>

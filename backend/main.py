@@ -1,326 +1,209 @@
 # backend/main.py
 
-from fastapi import FastAPI, Depends, HTTPException, status, Query
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, status
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session, joinedload
-from datetime import datetime
 from typing import List, Optional
+from pydantic import ValidationError
+import sys
+from pathlib import Path
+import os
+import io # Todavía útil para manejar bytes en memoria si es necesario
+import numpy as np
+import ffmpeg # Para procesamiento de audio
+import tempfile # Para manejar archivos temporales de forma segura
 
-# Importaciones locales
-from database import engine, Base, get_db, init_demo_data
-from models import Therapist, Patient, TherapySession, ClinicalRecord
-from schemas import (
-    TherapistCreate, TherapistOut,
-    PatientCreate, PatientOut,
-    SessionCreate, SessionOut,
-    ClinicalRecordOut,
-    StandardResponse, ErrorResponse
-)
+# --- IMPORTACIONES PARA WHISPER LOCAL ---
+from transformers import pipeline
+import torch
+# --- FIN IMPORTACIONES ---
 
-# --------------------------
-# CONFIGURACIÓN INICIAL
-# --------------------------
-app = FastAPI(
-    title="Mindful Therapy Compass API",
-    description="Sistema de gestión clínica para psicólogos",
-    version="2.2.0",
-    docs_url="/api/docs",
-    redoc_url=None,
-    responses={
-        400: {"model": ErrorResponse},
-        404: {"model": ErrorResponse},
-        500: {"model": ErrorResponse}
-    }
-)
+# --- CONFIGURACIÓN DE RUTA DE FFMPEG ---
+ffmpeg_bin_path = r"C:\ffmpeg\bin" 
 
-# CORS
+if ffmpeg_bin_path not in os.environ["PATH"]:
+    os.environ["PATH"] += os.pathsep + ffmpeg_bin_path
+    print(f"Añadida la ruta de FFmpeg al PATH de la aplicación: {ffmpeg_bin_path}")
+else:
+    print(f"La ruta de FFmpeg ya está en el PATH de la aplicación: {ffmpeg_bin_path}")
+# --- FIN CONFIGURACIÓN DE RUTA DE FFMPEG ---
+
+# --- CONFIGURACIÓN PARA IMPORTACIONES ABSOLUTAS ---
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from backend import models, schemas
+from backend.database import engine, get_db
+# --- FIN CONFIGURACIÓN EN IMPORTACIONES ---
+
+from sqlalchemy.orm import Session
+from fastapi import Depends
+
+# Crear todas las tablas definidas en models.Base
+models.Base.metadata.create_all(bind=engine)
+
+app = FastAPI()
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",    # Tu frontend React con Vite
-        "http://127.00.0.1:5173",    # A veces localhost se resuelve como 127.0.0.1
-        "http://localhost:3000",    # Por si usas Create React App en el futuro
-        "http://127.0.0.1:3000"     # Lo mismo para 127.0.0.1
-    ],
+    allow_origins=["http://localhost:5173"], # Tu frontend Vite/React
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    allow_credentials=True,
 )
 
-# Crear tablas al inicio (solo desarrollo)
-@app.on_event("startup")
-def startup():
-    print(f"INFO [{datetime.now()}]: Intentando eliminar todas las tablas existentes...")
-    # Base.metadata.drop_all(bind=engine) # <--- Esta línea DEBE ESTAR COMENTADA para uso normal
-    print(f"INFO [{datetime.now()}]: Tablas existentes eliminadas (si existían).")
-
-    print(f"INFO [{datetime.now()}]: Creando todas las tablas nuevas...")
-    Base.metadata.create_all(bind=engine) # Esto crea las tablas con los nuevos nombres/estructuras
-    print(f"INFO [{datetime.now()}]: Tablas creadas exitosamente.")
-
-    db = next(get_db())
-    try:
-        if db.query(Therapist).first() is None:
-            print(f"INFO [{datetime.now()}]: No hay terapeutas en la base de datos, creando datos demo...")
-            init_demo_data()
-            print(f"INFO [{datetime.now()}]: Datos demo creados exitosamente.")
-        else:
-            print(f"INFO [{datetime.now()}]: Ya existen terapeutas en la base de datos, no se crearon datos demo adicionales.")
-    except Exception as e:
-        print(f"ERROR [{datetime.now()}]: al intentar crear datos demo en el startup: {e}")
-    finally:
-        db.close()
-
-# --------------------------
-# ENDPOINTS DE TERAPEUTAS
-# --------------------------
-@app.post(
-    "/api/therapists",
-    response_model=TherapistOut,
-    status_code=status.HTTP_201_CREATED,
-    tags=["Terapeutas"],
-    summary="Crear nuevo terapeuta"
-)
-def create_therapist(
-    therapist: TherapistCreate,
-    db: Session = Depends(get_db)
-):
-    """Registra un nuevo terapeuta en el sistema"""
-    existing = db.query(Therapist).filter(Therapist.email == therapist.email).first()
-    if existing:
-        raise HTTPException(
-            status_code=400,
-            detail={"code": "THERAPIST_EXISTS", "detail": "Email ya registrado"}
-        )
+# --- CARGAR EL MODELO WHISPER GLOBALMENTE AL INICIAR LA APP ---
+whisper_pipeline = None
+try:
+    print("Cargando modelo Whisper 'base'...")
     
-    try:
-        db_therapist = Therapist(
-            full_name=therapist.full_name,
-            email=therapist.email,
-            license_number=therapist.license_number,
-            password_hash="hashed_" + therapist.password # Esto es un placeholder, deberías usar un hashing real
-        )
-        db.add(db_therapist)
-        db.commit()
-        db.refresh(db_therapist)
-        return db_therapist
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail={"code": "DB_ERROR", "detail": str(e)}
-        )
+    whisper_pipeline = pipeline(
+        "automatic-speech-recognition", 
+        model="openai/whisper-base",
+        chunk_length_s=30,
+        device=-1 # Usar CPU. Si tienes GPU NVIDIA con CUDA configurado, puedes intentar device=0.
+    )
+    print("Modelo Whisper cargado exitosamente.")
+except Exception as e:
+    print(f"Error al cargar el modelo Whisper: {e}")
 
-@app.get(
-    "/api/therapists",
-    response_model=List[TherapistOut],
-    tags=["Terapeutas"],
-    summary="Listar todos los terapeutas"
-)
-def list_therapists(db: Session = Depends(get_db)):
-    return db.query(Therapist).all()
 
-# --------------------------
-# ENDPOINTS DE PACIENTES
-# --------------------------
-@app.post(
-    "/api/patients",
-    response_model=PatientOut,
-    status_code=status.HTTP_201_CREATED,
-    tags=["Pacientes"],
-    summary="Crear nuevo paciente"
-)
-def create_patient(
-    patient: PatientCreate,
-    db: Session = Depends(get_db)
-):
-    """
-    Registra un nuevo paciente asociado a un terapeuta
-    y crea un registro clínico inicial para él.
-    """
-    therapist = db.query(Therapist).get(patient.therapist_id)
-    if not therapist:
-        raise HTTPException(
-            status_code=404,
-            detail={"code": "THERAPIST_NOT_FOUND", "detail": "Terapeuta no existe"}
-        )
-    
-    try:
-        db_patient = Patient(
-            full_name=patient.full_name,
-            birth_date=patient.birth_date,
-            gender=patient.gender,
-            therapist_id=patient.therapist_id,
-            diagnosis=patient.diagnosis,
-            medication=patient.medication,
-            additional_notes=patient.additional_notes
-        )
-        db.add(db_patient)
-        db.flush() # Importante: db.flush() para que db_patient.id esté disponible antes del commit
-        db.refresh(db_patient)
+# --- Endpoint para la raíz (existente) ---
+@app.get("/")
+def read_root():
+    return {"message": "Welcome to Mindful Therapy Compass API"}
 
-        # --- MODIFICACIÓN CLAVE: CREAR UN REGISTRO CLÍNICO INICIAL ---
-        initial_clinical_record = ClinicalRecord(
-            patient_id=db_patient.id,
-            start_date=datetime.now().date(), # Solo la fecha
-            last_update=datetime.now(),     # Fecha y hora completa
-            summary="Registro inicial creado automáticamente al dar de alta al paciente.",
-            is_active=True
-        )
-        db.add(initial_clinical_record)
-        # --- FIN MODIFICACIÓN CLAVE ---
-
-        db.commit() # Ahora se guarda el paciente Y el registro clínico
-        db.refresh(db_patient) # Refrescar db_patient para incluir el nuevo clinical_record si necesario (joinedload)
-        return db_patient
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=400,
-            detail={"code": "PATIENT_CREATION_FAILED", "detail": str(e)}
-        )
-
-@app.get(
-    "/api/patients",
-    response_model=List[PatientOut],
-    tags=["Pacientes"],
-    summary="Listar pacientes filtrados por terapeuta"
-)
-def list_patients(
-    therapist_id: Optional[int] = Query(None, description="Filtrar por ID de terapeuta"),
-    db: Session = Depends(get_db)
-):
-    """Obtiene todos los pacientes, con filtro opcional por terapeuta"""
-    query = db.query(Patient)
-    
-    if therapist_id is not None:
-        query = query.filter(Patient.therapist_id == therapist_id)
-    
-    patients = query.order_by(Patient.full_name.asc()).all()
-    
+# --- Endpoints de Pacientes ---
+@app.get("/api/patients", response_model=List[schemas.PatientBase])
+async def get_patients(therapist_id: Optional[int] = None, db: Session = Depends(get_db)):
+    query = db.query(models.Patient)
+    if therapist_id:
+        query = query.filter(models.Patient.therapist_id == therapist_id)
+    patients = query.all()
+    if not patients:
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content={"detail": "No patients found for this therapist."})
     return patients
 
-@app.get(
-    "/api/patients/{patient_id}",
-    response_model=PatientOut,
-    tags=["Pacientes"],
-    summary="Obtener detalles de un paciente, incluyendo historial de sesiones y registros clínicos"
-)
-def get_patient_history(
-    patient_id: int,
-    db: Session = Depends(get_db)
-):
-    """
-    Obtiene un paciente por ID, cargando sus sesiones y registros clínicos asociados.
-    """
-    patient = (
-        db.query(Patient)
-        .options(
-            joinedload(Patient.therapy_sessions),
-            joinedload(Patient.clinical_records)
-        )
-        .filter(Patient.id == patient_id)
-        .first()
-    )
-
+@app.get("/api/patients/{patient_id}", response_model=schemas.PatientOut)
+async def get_patient_history(patient_id: int, db: Session = Depends(get_db)):
+    patient = db.query(models.Patient).filter(models.Patient.id == patient_id).first()
     if not patient:
-        raise HTTPException(
-            status_code=404,
-            detail={"code": "PATIENT_NOT_FOUND", "detail": "Paciente no existe"}
-        )
+        raise HTTPException(status_code=404, detail="Patient not found")
+    
     return patient
 
-# --------------------------
-# ENDPOINTS DE SESIONES
-# --------------------------
-@app.post(
-    "/api/patients/{patient_id}/sessions",
-    response_model=SessionOut,
-    status_code=status.HTTP_201_CREATED,
-    tags=["Sesiones"],
-    summary="Crear nueva sesión"
-)
-def create_session(
+@app.post("/api/patients", response_model=schemas.PatientOut, status_code=status.HTTP_201_CREATED)
+async def create_patient(patient: schemas.PatientCreate, db: Session = Depends(get_db)):
+    db_patient = models.Patient(**patient.dict())
+    db.add(db_patient)
+    db.commit()
+    db.refresh(db_patient)
+    return db_patient
+
+@app.post("/api/patients/{patient_id}/sessions", response_model=schemas.SessionOut, status_code=status.HTTP_201_CREATED)
+async def create_session_for_patient(
     patient_id: int,
-    session_data: SessionCreate,
+    session: schemas.SessionCreate,
     db: Session = Depends(get_db)
 ):
-    """Crea una nueva sesión terapéutica y la asocia al último registro clínico activo del paciente."""
-    patient = db.query(Patient).get(patient_id)
+    patient = db.query(models.Patient).filter(models.Patient.id == patient_id).first()
     if not patient:
-        raise HTTPException(
-            status_code=404,
-            detail={"code": "PATIENT_NOT_FOUND", "detail": "Paciente no existe"}
-        )
-    
-    # --- Asignar clinical_record_id (la lógica ya estaba, pero ahora debería encontrar uno) ---
-    clinical_record_id_to_associate: Optional[int] = None
-    last_clinical_record = db.query(ClinicalRecord)\
-                             .filter(ClinicalRecord.patient_id == patient_id, ClinicalRecord.is_active == True)\
-                             .order_by(ClinicalRecord.last_update.desc())\
-                             .first()
-    
-    if last_clinical_record:
-        clinical_record_id_to_associate = last_clinical_record.id
-    # --- FIN Asignación ---
+        raise HTTPException(status_code=404, detail={"detail": "Paciente no encontrado."})
 
-    try:
-        new_session = TherapySession(
-            patient_id=patient_id,
-            therapist_id=patient.therapist_id,
-            session_notes=session_data.session_notes,
-            emotional_score=session_data.emotional_score,
-            session_type=session_data.session_type,
-            duration_minutes=session_data.duration_minutes,
-            session_date=session_data.session_date or datetime.now(),
-            clinical_record_id=clinical_record_id_to_associate
-        )
-        db.add(new_session)
-        db.commit()
-        db.refresh(new_session)
-        return new_session
-    except Exception as e:
-        db.rollback()
-        print(f"ERROR al guardar la sesión en la DB: {e}") 
-        raise HTTPException(
-            status_code=500,
-            detail={"code": "SESSION_CREATION_FAILED", "detail": f"Error al guardar la sesión: {str(e)}"}
-        )
-
-@app.get(
-    "/api/patients/{patient_id}/sessions",
-    response_model=List[SessionOut],
-    tags=["Sesiones"],
-    summary="Obtener sesiones de paciente"
-)
-def get_sessions(
-    patient_id: int,
-    db: Session = Depends(get_db)
-):
-    """Obtiene todas las sesiones de un paciente específico"""
-    sessions = db.query(TherapySession).filter(
-        TherapySession.patient_id == patient_id
-    ).order_by(
-        TherapySession.session_date.desc()
-    ).all()
-    
-    if not sessions:
-        return []
-    return sessions
-
-# --------------------------
-# ENDPOINTS ADICIONALES
-# --------------------------
-@app.get("/", tags=["Root"], include_in_schema=False)
-def root():
-    return {"message": "API Mindful Therapy Compass"}
-
-@app.get("/api/healthcheck", tags=["Estado"])
-def healthcheck():
-    return StandardResponse(
-        message="Servicio operativo",
+    db_session = models.Session(
+        **session.dict(),
+        patient_id=patient_id,
+        therapist_id=patient.therapist_id
     )
+    db.add(db_session)
+    db.commit()
+    db.refresh(db_session)
+    return db_session
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+# --- ENDPOINT PARA TRANSCRIPCION DE AUDIO USANDO WHISPER LOCAL (con ffmpeg-python y archivo temporal) ---
+@app.post("/api/transcribe-audio")
+async def transcribe_audio(
+    audio_file: UploadFile = File(...),
+    language: str = Form(None)
+):
+    """
+    Recibe un archivo de audio, lo guarda temporalmente, lo preprocesa con ffmpeg-python
+    y lo transcribe usando el modelo OpenAI Whisper (local), devolviendo el texto.
+    """
+    if not whisper_pipeline:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"detail": "El modelo de transcripción de voz no está cargado o disponible. Revisa los logs del servidor."}
+        )
+
+    if not audio_file.content_type.startswith("audio/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"detail": "El archivo subido no es un archivo de audio válido."}
+        )
+
+    # Crear un archivo temporal para guardar el audio subido
+    tmp_file_path = None
+    try:
+        # Usamos NamedTemporaryFile para una gestión segura de archivos temporales.
+        # El sufijo se basa en el content_type para ayudar a FFmpeg, aunque no es estrictamente necesario.
+        suffix = "." + audio_file.content_type.split('/')[-1] if '/' in audio_file.content_type else ".tmp"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+            await audio_file.seek(0) # Asegúrate de que el puntero de lectura esté al inicio
+            tmp_file.write(await audio_file.read())
+            tmp_file_path = tmp_file.name # Guarda la ruta del archivo temporal
+
+        # Usar ffmpeg-python para procesar el audio desde el archivo temporal
+        # -i tmp_file_path: archivo de entrada temporal
+        # -f s16le: formato de salida PCM de 16 bits little-endian (sin comprimir)
+        # -acodec pcm_s16le: códec PCM de 16 bits
+        # -ac 1: audio mono
+        # -ar 16000: sample rate de 16 kHz (lo que Whisper espera)
+        # pipe:1: enviar la salida a stdout
+        # -loglevel quiet: para suprimir la salida verbosa de ffmpeg
+        
+        process = (
+            ffmpeg
+            .input(tmp_file_path) # ¡Ahora leemos desde el archivo temporal!
+            .output('pipe:1', format='s16le', acodec='pcm_s16le', ac=1, ar=16000, loglevel='quiet')
+            .run_async(pipe_stdout=True, pipe_stderr=True)
+        )
+        
+        # Capturar la salida de ffmpeg
+        out, err = process.communicate()
+
+        if process.returncode != 0:
+            error_message = err.decode().strip() if err else "Error desconocido de FFmpeg."
+            print(f"Error de FFmpeg (código {process.returncode}): {error_message}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al procesar el audio con FFmpeg: {error_message}"
+            )
+
+        # Convertir los bytes de salida a un array de NumPy (float32, normalizado)
+        audio_np = np.frombuffer(out, dtype=np.int16).astype(np.float32) / 32768.0
+
+        # El pipeline de transformers puede recibir un array de NumPy directamente
+        transcription_result = whisper_pipeline(
+            audio_np, # Pasar el array de NumPy directamente
+            generate_kwargs={"language": "spanish", "task": "transcribe"}
+        )
+        
+        transcribed_text = transcription_result["text"]
+
+        return {"transcribed_text": transcribed_text}
+
+    except ffmpeg.Error as e:
+        error_message = e.stderr.decode().strip() if e.stderr else "Error desconocido de FFmpeg."
+        print(f"Error de FFmpeg al procesar el audio: {error_message}")
+        raise HTTPException(status_code=500, detail=f"Error de FFmpeg: {error_message}")
+    except Exception as e:
+        print(f"Error inesperado durante la transcripción: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"detail": f"Error interno del servidor durante la transcripción: {e}"}
+        )
+    finally:
+        # Asegurarse de eliminar el archivo temporal
+        if tmp_file_path and os.path.exists(tmp_file_path):
+            os.remove(tmp_file_path)
