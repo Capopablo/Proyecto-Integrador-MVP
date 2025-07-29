@@ -147,7 +147,8 @@ const PatientHistory = ({ user }: PatientHistoryProps) => {
   return (
     <PageContainer
       title="Historial del Paciente"
-      subtitle={`Terapeuta: ${user.full_name} (${user.role})`}
+      // ELIMINAMOS COMPLETAMENTE la prop 'subtitle' de aquí
+      // subtitle={`Terapeuta: ${user.full_name} (${user.role})`} <-- Esta línea es la que quitamos
     >
       <div className="space-y-6">
         {/* Selector de pacientes */}

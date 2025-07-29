@@ -1,12 +1,11 @@
-
 import { useNavigate, Link } from "react-router-dom";
 import { ArrowUp, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 
 interface PageContainerProps {
-  title: string;
-  subtitle?: string;
+  title?: string; // Ahora 'title' es OPCIONAL
+  subtitle?: string; // 'subtitle' ya era opcional, se mantiene así
   children: React.ReactNode;
 }
 
@@ -43,12 +42,15 @@ const PageContainer = ({ title, subtitle, children }: PageContainerProps) => {
           </Button>
         </div>
         
-        <div className="text-center mb-8">
-          <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-600 to-teal-600 text-transparent bg-clip-text mb-2">
-            {title}
-          </h1>
-          {subtitle && <p className="text-slate-600 text-base md:text-lg">{subtitle}</p>}
-        </div>
+        {/* Solo renderizamos el título y subtítulo si existen */}
+        {title && (
+          <div className="text-center mb-8">
+            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-600 to-teal-600 text-transparent bg-clip-text mb-2">
+              {title}
+            </h1>
+            {subtitle && <p className="text-slate-600 text-base md:text-lg">{subtitle}</p>}
+          </div>
+        )}
 
         {children}
       </div>

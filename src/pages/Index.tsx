@@ -1,15 +1,14 @@
+// src/pages/Index.tsx
 import { Link } from "react-router-dom";
-import { UserPlus, FilePlus, FileText, Search, BarChart2 } from "lucide-react";
+import { UserPlus, FilePlus, FileText, BarChart2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import PageContainer from '@/components/PageContainer'; // Importa PageContainer si lo usas
-import { User } from '../App'; // Importa la interfaz User desde App.tsx
+import PageContainer from '@/components/PageContainer';
+import { User } from '../App';
 
-// 1. Define las props esperadas para el componente Index
 interface IndexProps {
-  user: User; // Declara que Index espera una prop 'user' de tipo User
+  user: User;
 }
 
-// 2. Asegúrate de que tu componente Index reciba las props
 const Index = ({ user }: IndexProps) => {
   const actions = [
     {
@@ -34,25 +33,20 @@ const Index = ({ user }: IndexProps) => {
       path: "/patient-history",
     },
     {
-      title: "Buscar Pacientes",
-      description: "Buscar y gestionar pacientes existentes",
-      icon: Search,
-      color: "text-orange-500",
-      path: "/search-patients",
-    },
-    {
-      title: "Ver Estadísticas",
-      description: "Analizar datos y tendencias",
+      title: "Estadísticas",
+      description: "Datos y tendencias", // Modificado: Eliminada la palabra "Analizar"
       icon: BarChart2,
       color: "text-cyan-500",
       path: "/statistics",
+      isSmall: true,
+      isCentered: true,
     },
   ];
 
   return (
-    <PageContainer 
-      title={`Bienvenido, ${user.full_name}`} // Título personalizado
-      subtitle={`Tu rol es: ${user.role}. ¡Tu ID de terapeuta es: ${user.id}!`} // Subtítulo personalizado
+    <PageContainer
+      // Eliminamos por completo las props 'title' y 'subtitle'
+      // El PageContainer no generará ningún encabezado en esta página.
     >
       <div className="text-center mb-12 mt-8">
         <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-blue-600 to-teal-600 text-transparent bg-clip-text mb-4">
@@ -63,19 +57,33 @@ const Index = ({ user }: IndexProps) => {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {actions.map((action) => (
-          <Link to={action.path} key={action.title} className="block">
-            <Card className="p-6 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 cursor-pointer bg-white/50 backdrop-blur-sm border border-slate-200 h-full">
-              <div className="flex flex-col items-center text-center space-y-4">
-                <div className={`${action.color}`}>
-                  <action.icon size={32} />
-                </div>
-                <h2 className="text-xl font-semibold text-slate-800">
-                  {action.title}
-                </h2>
-                <p className="text-sm text-slate-600">{action.description}</p>
+      {/* Ajustamos el contenedor de las acciones */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr items-end">
+        {actions.map((action, index) => (
+          <Link
+            to={action.path}
+            key={action.title}
+            className={`block ${
+              // Si es la última acción y queremos centrarla
+              action.isCentered
+                ? 'col-span-1 md:col-span-2 lg:col-span-3 flex justify-center' // Ocupa todas las columnas disponibles para centrar
+                : ''
+            }`}
+          >
+            <Card
+              className={`p-6 hover:shadow-lg transition-all duration-300 hover:-translate-y-1 cursor-pointer bg-white/50 backdrop-blur-sm border border-slate-200 h-full flex flex-col justify-center items-center text-center space-y-4 ${
+                action.isSmall ? 'p-4' : ''
+              } ${
+                action.isCentered ? 'w-full max-w-sm' : '' // Define un ancho máximo para la tarjeta centrada
+              }`}
+            >
+              <div className={`${action.color}`}>
+                <action.icon size={action.isSmall ? 24 : 32} />
               </div>
+              <h2 className={`font-semibold text-slate-800 ${action.isSmall ? 'text-lg' : 'text-xl'}`}>
+                {action.title}
+              </h2>
+              <p className={`text-slate-600 ${action.isSmall ? 'text-xs' : 'text-sm'}`}>{action.description}</p>
             </Card>
           </Link>
         ))}

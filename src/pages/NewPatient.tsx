@@ -113,7 +113,8 @@ const NewPatient = ({ user }: NewPatientProps) => {
   return (
     <PageContainer 
       title="Nuevo Paciente" 
-      subtitle={`Terapeuta: ${user.full_name} (${user.role})`}
+      // ELIMINAMOS COMPLETAMENTE la prop 'subtitle' de aquí
+      // subtitle={`Terapeuta: ${user.full_name} (${user.role})`} <-- Esta línea es la que quitamos
     >
       <div className="bg-white/50 backdrop-blur-sm border border-slate-200 rounded-lg p-6 shadow-sm">
         <Form {...form}>
