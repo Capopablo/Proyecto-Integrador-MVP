@@ -21,7 +21,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 
 import { useReactMediaRecorder } from "react-media-recorder";
 
@@ -31,7 +30,7 @@ interface Patient {
 }
 
 interface SessionFormValues {
-  patient_name: string; 
+  patient_id: number | undefined; 
   session_notes: string;
   emotional_score: number;
   session_type: "regular" | "evaluación" | "emergencia" | "seguimiento";
@@ -67,7 +66,7 @@ const NewSession = ({ user }: NewSessionProps) => {
 
   const form = useForm<SessionFormValues>({
     defaultValues: {
-      patient_name: "",
+      patient_id: undefined, 
       session_notes: "",
       emotional_score: 3,
       session_type: "regular",
@@ -107,36 +106,25 @@ const NewSession = ({ user }: NewSessionProps) => {
   const onSubmit = async (data: SessionFormValues) => {
     setIsSubmitting(true);
     
-    const selectedPatient = patients.find(
-        (p) => p.full_name.toLowerCase() === data.patient_name.toLowerCase().trim()
-    );
-
-    if (!selectedPatient) {
-        toast.error("Paciente no encontrado. Por favor, selecciona un paciente de la lista de sugerencias o escribe el nombre completo correctamente.");
-        setIsSubmitting(false);
-        return;
+    if (data.patient_id === undefined) {
+      toast.error("Por favor, selecciona un paciente de la lista.");
+      setIsSubmitting(false);
+      return;
     }
 
-    // --- AÑADE ESTOS CONSOLE.LOGS PARA DEPURAR ---
-    console.log("--- Depuración de patient_id ---");
-    console.log("selectedPatient:", selectedPatient);
-    console.log("selectedPatient.id (valor original):", selectedPatient.id);
-    console.log("typeof selectedPatient.id (tipo original):", typeof selectedPatient.id);
-    console.log("Number(selectedPatient.id) (valor convertido):", Number(selectedPatient.id));
-    console.log("typeof Number(selectedPatient.id) (tipo convertido):", typeof Number(selectedPatient.id));
-    // --- FIN CONSOLE.LOGS DE DEPURACIÓN ---
+    const selectedPatientName = patients.find(p => p.id === data.patient_id)?.full_name || 'Paciente desconocido';
 
     try {
       const bodyToSend = {
-        patient_id: Number(selectedPatient.id), 
+        patient_id: data.patient_id, 
         session_notes: data.session_notes,
         emotional_score: data.emotional_score,
         session_type: data.session_type,
         duration_minutes: data.duration_minutes,
       };
       
-      console.log("Cuerpo JSON a enviar (bodyToSend):", bodyToSend); // Reconfirma el objeto completo
-      console.log("Tipo de patient_id en el objeto final:", typeof bodyToSend.patient_id); // Reconfirma el tipo final
+      console.log("Cuerpo JSON a enviar (bodyToSend):", bodyToSend); 
+      console.log("Tipo de patient_id en el objeto final:", typeof bodyToSend.patient_id);
 
       const response = await fetch(`http://localhost:8000/api/sessions`, { 
         method: "POST",
@@ -170,9 +158,9 @@ const NewSession = ({ user }: NewSessionProps) => {
       }
 
       const result = await response.json();
-      toast.success(`Sesión guardada con éxito para ${selectedPatient.full_name}`);
+      toast.success(`Sesión guardada con éxito para ${selectedPatientName}`);
       form.reset({
-        patient_name: "",
+        patient_id: undefined, 
         session_notes: "",
         emotional_score: 3,
         session_type: "regular",
@@ -243,8 +231,7 @@ const NewSession = ({ user }: NewSessionProps) => {
   return (
     <PageContainer
       title="Nueva Sesión"
-      // ELIMINAMOS COMPLETAMENTE la prop 'subtitle' de aquí
-      // subtitle={`Terapeuta: ${user.full_name} (${user.role})`} <-- Esta línea es la que quitamos
+      // subtitle={`Terapeuta: ${user.full_name} (${user.role})`} // Puedes descomentar esto si lo necesitas
     >
       <div className="bg-white/50 backdrop-blur-sm border border-slate-200 rounded-lg p-6 shadow-sm">
         <Form {...form}>
@@ -252,27 +239,42 @@ const NewSession = ({ user }: NewSessionProps) => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <FormField
                 control={form.control}
-                name="patient_name"
+                name="patient_id" 
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Paciente*</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="Escribe el nombre del paciente y selecciona"
-                        {...field}
-                        list="patients-list" 
-                        disabled={isLoadingPatients} 
-                        required
-                      />
-                    </FormControl>
-                    <datalist id="patients-list">
-                      {patients.map((patient) => (
-                        <option key={patient.id} value={patient.full_name} />
-                      ))}
-                    </datalist>
-                    <FormMessage />
+                    <Select
+                      onValueChange={(value) => {
+                        field.onChange(value === "" ? undefined : Number(value));
+                      }}
+                      value={field.value !== undefined && field.value !== null ? String(field.value) : ""}
+                      disabled={isLoadingPatients}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={
+                              isLoadingPatients
+                                ? "Cargando pacientes..."
+                                : patients.length === 0
+                                  ? "No hay pacientes disponibles"
+                                  : "Seleccionar paciente"
+                            }
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {/* SOLO RENDERIZAR SelectItem SI HAY PACIENTES */}
+                        {patients.map((patient) => (
+                          <SelectItem key={patient.id} value={String(patient.id)}>
+                            {patient.full_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {/* Mensajes de estado fuera del SelectContent */}
                     {isLoadingPatients && <p className="text-sm text-muted-foreground mt-1">Cargando pacientes...</p>}
-                    {!isLoadingPatients && patients.length === 0 && <p className="text-sm text-red-500 mt-1">No hay pacientes registrados para este terapeuta.</p>}
+                    {!isLoadingPatients && patients.length === 0 && field.value === undefined && <p className="text-sm text-red-500 mt-1">No hay pacientes registrados para este terapeuta.</p>}
+                    <FormMessage />
                   </FormItem>
                 )}
               />
@@ -431,7 +433,7 @@ const NewSession = ({ user }: NewSessionProps) => {
               <Button
                 type="submit"
                 className="w-full md:w-auto"
-                disabled={isSubmitting || isLoadingPatients || patients.length === 0 || isTranscribing}
+                disabled={isSubmitting || isLoadingPatients || patients.length === 0 || isTranscribing || form.watch("patient_id") === undefined}
               >
                 {isSubmitting ? "Guardando..." : "Guardar Sesión"}
               </Button>
