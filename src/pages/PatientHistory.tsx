@@ -1,8 +1,6 @@
-// src/pages/PatientHistory.tsx
-
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "react-router-dom";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, FileDown } from "lucide-react"; 
 import { toast } from "sonner";
 import PageContainer from "@/components/PageContainer";
 import { Input } from "@/components/ui/input";
@@ -16,6 +14,15 @@ import {
 } from "@/components/ui/select";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+
+// --- IMPORTACIÓN QUE FALTABA ---
+import { Button } from "@/components/ui/button"; // ¡ESTA ES LA LÍNEA QUE FALTABA!
+// --- FIN IMPORTACIÓN QUE FALTABA ---
+
+// --- IMPORTACIONES PARA PDF ---
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas'; 
+// --- FIN IMPORTACIONES PARA PDF ---
 
 // --- INTERFACES ACTUALIZADAS PARA COINCIDIR CON EL BACKEND ---
 interface User {
@@ -58,8 +65,8 @@ interface Patient {
   additional_notes: string | null;
   created_at: string;
   is_active: boolean;
-  therapy_sessions: Session[]; // Asegúrate de que esto siempre es un array
-  clinical_records: ClinicalRecord[]; // Asegúrate de que esto siempre es un array
+  therapy_sessions: Session[]; 
+  clinical_records: ClinicalRecord[];
 }
 // --- FIN INTERFACES ACTUALIZADAS ---
 
@@ -74,7 +81,8 @@ const PatientHistory = ({ user }: PatientHistoryProps) => {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Función para cargar un paciente por ID, incluyendo sus relaciones
+  const clinicalRecordRef = useRef<HTMLDivElement>(null); 
+
   const fetchPatientWithHistory = useCallback(async (id: number) => {
     setLoading(true);
     try {
@@ -84,7 +92,6 @@ const PatientHistory = ({ user }: PatientHistoryProps) => {
         throw new Error(errorData.detail?.detail || "Error al cargar el historial del paciente");
       }
       const data: Patient = await response.json();
-      // Asegúrate de que 'therapy_sessions' y 'clinical_records' sean siempre arrays
       data.therapy_sessions = data.therapy_sessions || [];
       data.clinical_records = data.clinical_records || [];
       setSelectedPatient(data);
@@ -97,7 +104,6 @@ const PatientHistory = ({ user }: PatientHistoryProps) => {
     }
   }, []);
 
-  // Cargar todos los pacientes disponibles para el terapeuta al inicio
   useEffect(() => {
     const fetchAvailablePatients = async () => {
       setLoading(true);
@@ -144,11 +150,58 @@ const PatientHistory = ({ user }: PatientHistoryProps) => {
     patient.full_name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const handleDownloadPDF = async () => {
+    if (!clinicalRecordRef.current) {
+      toast.error("El contenido del historial clínico no está disponible para descargar.");
+      return;
+    }
+
+    if (!selectedPatient || selectedPatient.therapy_sessions.length === 0) {
+        toast.warning("No hay sesiones para el paciente seleccionado para generar el PDF.");
+        return;
+    }
+
+    toast.info("Generando PDF... por favor espera.");
+
+    try {
+        const input = clinicalRecordRef.current;
+        const canvas = await html2canvas(input, {
+            scale: 2, 
+            useCORS: true, 
+            logging: true, 
+        });
+
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF('p', 'mm', 'a4'); 
+
+        const imgWidth = 210; 
+        const pageHeight = 297; 
+        const imgHeight = canvas.height * imgWidth / canvas.width;
+        let heightLeft = imgHeight;
+        let position = 0;
+
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+
+        while (heightLeft >= 0) {
+            position = heightLeft - imgHeight;
+            pdf.addPage();
+            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
+        }
+
+        const patientNameForFile = selectedPatient.full_name.replace(/ /g, '_');
+        pdf.save(`Historial_${patientNameForFile}.pdf`);
+        toast.success("PDF generado y descargado con éxito.");
+    } catch (error) {
+        console.error("Error al generar el PDF:", error);
+        toast.error(`Error al generar el PDF: ${error instanceof Error ? error.message : "Desconocido"}`);
+    }
+  };
+
   return (
     <PageContainer
       title="Historial del Paciente"
-      // ELIMINAMOS COMPLETAMENTE la prop 'subtitle' de aquí
-      // subtitle={`Terapeuta: ${user.full_name} (${user.role})`} <-- Esta línea es la que quitamos
     >
       <div className="space-y-6">
         {/* Selector de pacientes */}
@@ -214,25 +267,31 @@ const PatientHistory = ({ user }: PatientHistoryProps) => {
 
         {/* --- INICIO DE LA "HOJA CLÍNICA" --- */}
         {selectedPatient && (
-          <Card className="p-6 bg-white shadow-lg rounded-lg border border-slate-200">
-            {/* Detalles del paciente seleccionado (Parte Superior de la Hoja) */}
-            <div className="mb-6 pb-4 border-b border-slate-200">
-              <h3 className="text-2xl font-bold text-slate-800 mb-4">
+          <Card ref={clinicalRecordRef} className="p-6 bg-white shadow-lg rounded-lg border border-slate-200">
+            {/* Cabecera de la hoja clínica con botón de descarga */}
+            <div className="mb-6 pb-4 border-b border-slate-200 flex justify-between items-center">
+              <h3 className="text-2xl font-bold text-slate-800">
                 Historial de {selectedPatient.full_name}
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-slate-700 text-base">
-                <p><span className="font-semibold">ID Paciente:</span> {selectedPatient.id}</p>
-                <p><span className="font-semibold">Fecha de Nacimiento:</span> {format(new Date(selectedPatient.birth_date), "dd MMMM yyyy", { locale: es })}</p>
-                <p><span className="font-semibold">Género:</span> {selectedPatient.gender}</p>
-                {selectedPatient.diagnosis && <p><span className="font-semibold">Diagnóstico:</span> {selectedPatient.diagnosis}</p>}
-                {selectedPatient.medication && <p><span className="font-semibold">Medicación:</span> {selectedPatient.medication}</p>}
-                <p className="col-span-2"><span className="font-semibold">Notas Adicionales:</span> {selectedPatient.additional_notes || 'N/A'}</p>
-                {/* --- CAMBIO AQUÍ: Fecha de Admisión --- */}
-                <p className="col-span-2 text-sm text-slate-500 mt-2">
-                    <span className="font-semibold">Fecha de Admisión:</span> {format(new Date(selectedPatient.created_at), "dd MMMM yyyy", { locale: es })}
-                </p>
-                {/* --- FIN CAMBIO --- */}
-              </div>
+              {/* Botón de Descargar PDF - Visible solo si hay sesiones cargadas */}
+              {selectedPatient.therapy_sessions.length > 0 && (
+                <Button onClick={handleDownloadPDF} disabled={loading}>
+                  <FileDown className="h-4 w-4 mr-2" /> Descargar PDF
+                </Button>
+              )}
+            </div>
+
+            {/* Detalles del paciente seleccionado (Parte Superior de la Hoja) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-slate-700 text-base mb-6">
+              <p><span className="font-semibold">ID Paciente:</span> {selectedPatient.id}</p>
+              <p><span className="font-semibold">Fecha de Nacimiento:</span> {format(new Date(selectedPatient.birth_date), "dd MMMM yyyy", { locale: es })}</p>
+              <p><span className="font-semibold">Género:</span> {selectedPatient.gender}</p>
+              {selectedPatient.diagnosis && <p><span className="font-semibold">Diagnóstico:</span> {selectedPatient.diagnosis}</p>}
+              {selectedPatient.medication && <p><span className="font-semibold">Medicación:</span> {selectedPatient.medication}</p>}
+              <p className="col-span-2"><span className="font-semibold">Notas Adicionales:</span> {selectedPatient.additional_notes || 'N/A'}</p>
+              <p className="col-span-2 text-sm text-slate-500 mt-2">
+                  <span className="font-semibold">Fecha de Admisión:</span> {format(new Date(selectedPatient.created_at), "dd MMMM yyyy", { locale: es })}
+              </p>
             </div>
 
             {/* Historial de Sesiones (Parte Inferior de la Hoja) */}
@@ -247,7 +306,7 @@ const PatientHistory = ({ user }: PatientHistoryProps) => {
               ) : selectedPatient.therapy_sessions.length > 0 ? (
                 <div className="space-y-4">
                   {selectedPatient.therapy_sessions
-                    .sort((a, b) => new Date(b.session_date).getTime() - new Date(a.session_date).getTime()) // Ordenar por fecha descendente
+                    .sort((a, b) => new Date(b.session_date).getTime() - new Date(a.session_date).getTime()) 
                     .map((session) => (
                       <div key={session.id} className="border-l-4 border-emerald-500 pl-4 py-2 bg-emerald-50/20 rounded-sm">
                         <p className="text-sm font-bold text-emerald-700 mb-1">
@@ -271,19 +330,6 @@ const PatientHistory = ({ user }: PatientHistoryProps) => {
                 </div>
               )}
             </div>
-
-            {/* Antiguos Registros Clínicos - Eliminados o minimizados.
-                La "Fecha de Admisión" ahora toma su lugar.
-                Si quieres mantener los registros clínicos más complejos en otro lugar, avísame.
-            */}
-            {/* Si aún quieres mostrar registros clínicos, pero de forma más resumida o en un acordeón */}
-            {/* selectedPatient.clinical_records.length > 0 && (
-                <div className="mt-8 space-y-4">
-                    <h3 className="text-xl font-semibold text-slate-700">Otros Registros Clínicos</h3>
-                    <p className="text-sm text-slate-500">Consulta los registros completos en otra sección si es necesario.</p>
-                </div>
-            )*/}
-            
           </Card>
         )}
         {/* --- FIN DE LA "HOJA CLÍNICA" --- */}
