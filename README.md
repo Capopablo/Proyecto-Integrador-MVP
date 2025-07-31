@@ -37,7 +37,7 @@ Búsqueda y Selección de Pacientes: Herramientas intuitivas para encontrar y se
 
 Este proyecto fue construido utilizando un enfoque de stack completo (full-stack), combinando las siguientes tecnologías:
 
-Frontend (Aplicación Web):
+**Frontend (Aplicación Web):**
 
 React: Biblioteca de JavaScript para construir interfaces de usuario interactivas.
 
@@ -60,7 +60,7 @@ lucide-react: Librería de iconos.
 jspdf & html2canvas: Para la generación de archivos PDF a partir del contenido HTML del historial.
 
 
-Backend (API):
+**Backend (API):**
 
 FastAPI: Framework web de Python moderno, rápido y asíncrono para construir APIs.
 
@@ -71,7 +71,7 @@ SQLAlchemy: Toolkit SQL y ORM (Mapeador Objeto-Relacional) para interactuar con 
 Uvicorn: Servidor ASGI para ejecutar la aplicación FastAPI.
 
 
-Base de Datos:
+**Base de Datos:**
 
 PostgreSQL: Base de datos ligera basada en archivos, utilizada para el desarrollo y almacenamiento local de los datos.
 
