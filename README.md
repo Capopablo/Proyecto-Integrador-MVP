@@ -1,4 +1,4 @@
-## aPSIstance - MINDFUL THERAPY COMPASS - MVP 
+## Proyecto Integrador - MVP - aPSIstance
 
 **Alumno:** Capo, Pablo  
 
