@@ -159,4 +159,4 @@ inicial: Rama de referencia (puede ser fusionada en develop y luego eliminada si
 SinLogin: Rama de referencia (puede ser fusionada en develop y luego eliminada si no es necesaria para el historial).
 
 Se recomienda trabajar en ramas de características separadas y luego fusionar en develop a través de Pull Requests.
-- Tailwind CSS
+
